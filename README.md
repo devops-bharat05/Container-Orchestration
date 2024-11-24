@@ -1,4 +1,4 @@
-# EKS Cluster with NGINX Ingress Controller, Horizontal Pod Autoscaling, and Jenkins CI/CD  
+# 🚀 EKS Cluster with NGINX Ingress Controller, Horizontal Pod Autoscaling, and Jenkins CI/CD 🚀 
 
 This project sets up an **Amazon EKS Cluster** on AWS with **NGINX Ingress Controller** and implements horizontal pod autoscaling. Jenkins is configured for CI/CD to automate deployments. The setup integrates **AWS ALB** and **Cloudflare** for DNS and routing traffic through a custom domain.  
 
@@ -222,6 +222,4 @@ eksctl delete cluster --name $CLUSTER_NAME --region $REGION
 echo "Cleanup completed."
 ```  
 
----
 
-Let me know if you need further customization! 🚀
