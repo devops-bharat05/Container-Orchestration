@@ -32,8 +32,7 @@ eksctl create cluster \
   --nodegroup-name "$NODE_GROUP_NAME" \
   --node-type "$NODE_TYPE" \
   --nodes "$NODE_COUNT" \
-  --version "$K8S_VERSION" \
-  --upgradePolicy Standard
+  --version "$K8S_VERSION" 
 
 if [[ $? -ne 0 ]]; then
   echo "Error: Failed to create the EKS cluster."
