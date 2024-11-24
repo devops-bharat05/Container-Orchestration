@@ -24,6 +24,16 @@ fi
 
 echo "Security Group created: $SECURITY_GROUP_ID"
 
+# Add Tags to the Security Group
+echo "Adding tags to the Security Group..."
+aws ec2 create-tags --resources $SECURITY_GROUP_ID --tags Key=Name,Value=KubernetesClusterSG Key=Environment,Value=Production
+
+if [ $? -ne 0 ]; then
+  echo "Failed to add tags to the Security Group."
+  exit 1
+fi
+echo "Tags added successfully."
+
 # Add Inbound Rules
 echo "Adding inbound rules to the Security Group..."
 
@@ -45,8 +55,16 @@ aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protoco
 # Allow all traffic within the security group
 aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol -1 --source-group $SECURITY_GROUP_ID
 
-# Add Outbound Rules
-echo "Adding outbound rule to allow all traffic..."
-aws ec2 authorize-security-group-egress --group-id $SECURITY_GROUP_ID --protocol -1 --cidr 0.0.0.0/0
+# Check if default outbound rule exists
+EXISTING_OUTBOUND_RULE=$(aws ec2 describe-security-groups --group-ids $SECURITY_GROUP_ID \
+  --query 'SecurityGroups[0].IpPermissionsEgress' --output text)
+
+if [ -z "$EXISTING_OUTBOUND_RULE" ]; then
+  # Add Outbound Rules
+  echo "Adding outbound rule to allow all traffic..."
+  aws ec2 authorize-security-group-egress --group-id $SECURITY_GROUP_ID --protocol -1 --cidr 0.0.0.0/0
+else
+  echo "Outbound rule to allow all traffic already exists. Skipping."
+fi
 
 echo "Security Group setup completed. Security Group ID: $SECURITY_GROUP_ID"
