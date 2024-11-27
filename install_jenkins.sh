@@ -20,8 +20,8 @@ update_system() {
 
 # Install Java (Jenkins requires Java)
 install_java() {
-    echo "Installing Java (OpenJDK 11)..."
-    apt install -y openjdk-11-jdk
+    echo "Installing Java (OpenJDK 17)..."
+    apt install -y openjdk-17-jdk
 }
 
 # Add Jenkins repository and GPG key
