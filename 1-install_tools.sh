@@ -10,6 +10,14 @@ sudo systemctl status docker
 echo "Installing Docker buildx......."
 sudo apt install docker-buildx
 
+echo "Add your user to the docker group:......."
+sudo usermod -aG docker $USER
+
+echo "Change the permissions of the Docker socket"
+sudo chmod 666 /var/run/docker.sock
+sudo systemctl restart docker
+
+
 #AWS CLI Installation
 echo "Installing AWS CLI......."
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
