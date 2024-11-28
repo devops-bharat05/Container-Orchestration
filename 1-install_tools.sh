@@ -2,6 +2,7 @@
 
 ehco " Updating...."
 sudo apt-get update
+sudo apt install unzip
 
 #AWS CLI Installation
 echo "Installing AWS CLI......."
