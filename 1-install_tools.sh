@@ -7,6 +7,8 @@ sudo apt install unzip
 echo "Installing Docker......."
 sudo apt install docker.io -y
 sudo systemctl status docker
+echo "Installing Docker buildx......."
+sudo apt install docker-buildx
 
 #AWS CLI Installation
 echo "Installing AWS CLI......."
