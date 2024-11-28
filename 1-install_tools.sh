@@ -50,6 +50,6 @@ echo "eksctl Version:"
 eksctl version
 
 echo "kubectl Version:"
-kubectl version --client --short
+kubectl version
 
 echo "Installation of all tools completed successfully!"
