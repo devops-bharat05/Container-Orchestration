@@ -4,6 +4,10 @@ ehco " Updating...."
 sudo apt-get update
 sudo apt install unzip
 
+echo "Installing Docker......."
+sudo apt install docker.io -y
+sudo systemctl status docker
+
 #AWS CLI Installation
 echo "Installing AWS CLI......."
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
