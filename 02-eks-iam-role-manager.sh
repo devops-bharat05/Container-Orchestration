@@ -1,16 +1,13 @@
 #!/bin/bash
 
-# Function to create roles
-create_roles() {
-  local cluster_name=$1
-  local cluster_role_name="${cluster_name}-cluster-role"
-  local node_role_name="${cluster_name}-node-role"
+# Function to create trust policy files
+create_trust_policy_files() {
+  local cluster_trust_policy=$1
+  local node_trust_policy=$2
 
-  # Trust policy JSON files
-  local cluster_trust_policy="eks-cluster-trust-policy.json"
-  local node_trust_policy="eks-node-trust-policy.json"
+  echo "Creating trust policy files..."
 
-  # Create trust policy files
+  # EKS Cluster trust policy
   cat <<EOT > $cluster_trust_policy
 {
   "Version": "2012-10-17",
@@ -26,6 +23,7 @@ create_roles() {
 }
 EOT
 
+  # Node group trust policy
   cat <<EOT > $node_trust_policy
 {
   "Version": "2012-10-17",
@@ -40,6 +38,20 @@ EOT
   ]
 }
 EOT
+}
+
+# Function to create IAM roles and attach policies
+create_roles() {
+  local cluster_name=$1
+  local cluster_role_name="${cluster_name}-cluster-role"
+  local node_role_name="${cluster_name}-node-role"
+
+  # Temporary trust policy files
+  local cluster_trust_policy="${cluster_name}_eks_cluster_trust_policy.json"
+  local node_trust_policy="${cluster_name}_eks_node_trust_policy.json"
+
+  # Create trust policy files
+  create_trust_policy_files $cluster_trust_policy $node_trust_policy
 
   echo "Creating IAM role for EKS cluster..."
   aws iam create-role --role-name $cluster_role_name --assume-role-policy-document file://$cluster_trust_policy
@@ -51,13 +63,20 @@ EOT
   aws iam attach-role-policy --role-name $node_role_name --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
   aws iam attach-role-policy --role-name $node_role_name --policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
 
-  # Cleanup local policy files
-  rm -f $cluster_trust_policy $node_trust_policy
+  # Fetch and display ARNs of created roles
+  echo "Fetching ARNs of created roles..."
+  cluster_role_arn=$(aws iam get-role --role-name $cluster_role_name --query "Role.Arn" --output text)
+  node_role_arn=$(aws iam get-role --role-name $node_role_name --query "Role.Arn" --output text)
 
-  echo "IAM roles for EKS cluster and node group have been created successfully."
+  echo "EKS Cluster Role ARN: $cluster_role_arn"
+  echo "EKS Node Role ARN: $node_role_arn"
+
+  echo "Trust policy files used for role creation:"
+  echo "Cluster policy file: $cluster_trust_policy"
+  echo "Node policy file: $node_trust_policy"
 }
 
-# Function to delete roles
+# Function to delete IAM roles and detach policies
 delete_roles() {
   local cluster_name=$1
   local cluster_role_name="${cluster_name}-cluster-role"
@@ -72,8 +91,6 @@ delete_roles() {
   aws iam detach-role-policy --role-name $node_role_name --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
   aws iam detach-role-policy --role-name $node_role_name --policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
   aws iam delete-role --role-name $node_role_name
-
-  echo "IAM roles for EKS cluster and node group have been deleted successfully."
 }
 
 # Prompt for cluster name and action
