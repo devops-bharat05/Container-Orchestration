@@ -47,25 +47,76 @@ pipeline {
             steps {
                 script {
                     sh '''
+                    echo "Creating IAM roles..."
+
+                    cat <<EOF > eks-cluster-trust-policy.json
+                    {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Principal": { "Service": "eks.amazonaws.com" },
+                          "Action": "sts:AssumeRole"
+                        }
+                      ]
+                    }
+                    EOF
+
                     aws iam create-role --role-name eks-cluster-role01 --assume-role-policy-document file://eks-cluster-trust-policy.json
                     aws iam attach-role-policy --role-name eks-cluster-role01 --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+                    
+                    cat <<EOF > eks-node-trust-policy.json
+                    {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Principal": { "Service": "ec2.amazonaws.com" },
+                          "Action": "sts:AssumeRole"
+                        }
+                      ]
+                    }
+                    EOF
+
+                    aws iam create-role --role-name eks-node-role01 --assume-role-policy-document file://eks-node-trust-policy.json
+                    aws iam attach-role-policy --role-name eks-node-role01 --policy-arn arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+                    aws iam attach-role-policy --role-name eks-node-role01 --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+                    aws iam attach-role-policy --role-name eks-node-role01 --policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
                     '''
                 }
             }
         }
-        
+
         stage('Create EKS Cluster') {
             steps {
                 script {
-                    sh 'eksctl create cluster -f cluster-config.yaml'
+                    sh '''
+                    echo "Creating EKS cluster..."
+                    cat <<EOF > cluster-config.yaml
+                    apiVersion: eksctl.io/v1alpha5
+                    kind: ClusterConfig
+                    metadata:
+                      name: $CLUSTER_NAME
+                      region: $AWS_REGION
+                    nodeGroups:
+                      - name: ng-1
+                        instanceType: t3.medium
+                        desiredCapacity: 2
+                    EOF
+
+                    eksctl create cluster -f cluster-config.yaml
+                    '''
                 }
             }
         }
-        
+
         stage('Deploy Ingress Controller') {
             steps {
                 script {
-                    sh 'kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/aws/deploy.yaml'
+                    sh '''
+                    echo "Deploying NGINX Ingress Controller..."
+                    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/aws/deploy.yaml
+                    '''
                 }
             }
         }
@@ -73,12 +124,31 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 script {
-                    sh 'kubectl apply -f mongo-secret.yaml && kubectl apply -f backend-deployment.yaml && kubectl apply -f frontend-deployment.yaml'
+                    sh '''
+                    echo "Deploying application..."
+                    kubectl create namespace mern || echo "Namespace already exists"
+                    kubectl apply -f mongo-secret.yaml
+                    kubectl apply -f backend-deployment.yaml
+                    kubectl apply -f frontend-deployment.yaml
+                    '''
                 }
             }
         }
     }
+
+    post {
+        always {
+            echo 'Pipeline completed.'
+        }
+        success {
+            echo 'EKS cluster and application deployed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed! Check the logs for errors.'
+        }
+    }
 }
+
 ```
 
 ---
@@ -99,12 +169,51 @@ helm-chart/
 
 ### Deployment YAML (Backend & Frontend)
 ```yaml
+helm-chart/
+|-- Chart.yaml
+|-- values.yaml
+|-- templates/
+    |-- deployment.yaml
+    |-- service.yaml
+    |-- ingress.yaml
+
+---
+# Chart.yaml
+apiVersion: v2
+name: mern-app
+version: 1.0.0
+description: A Helm chart for deploying a MERN application on EKS
+
+---
+# values.yaml
+replicaCount: 2
+
+image:
+  repository: your-dockerhub-repo/mern-app
+  tag: latest
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  hosts:
+    - host: mern.example.com
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+
+---
+# templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app: backend
@@ -115,9 +224,79 @@ spec:
     spec:
       containers:
         - name: backend
-          image: your-dockerhub-repo/mern-app:latest
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           ports:
             - containerPort: 5000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          ports:
+            - containerPort: 3000
+
+---
+# templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mern-service
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+
+---
+# templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mern-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: {{ .Values.ingress.hosts[0].host }}
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80
+
 ```
 
 ---
