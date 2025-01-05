@@ -1,225 +1,154 @@
-# 🚀 EKS Cluster with NGINX Ingress Controller, Horizontal Pod Autoscaling, and Jenkins CI/CD 🚀 
+# MERN Application Deployment on AWS EKS
 
-This project sets up an **Amazon EKS Cluster** on AWS with **NGINX Ingress Controller** and implements horizontal pod autoscaling. Jenkins is configured for CI/CD to automate deployments. The setup integrates **AWS ALB** and **Cloudflare** for DNS and routing traffic through a custom domain.  
+## Project Overview
+This project aims to streamline the deployment process of a MERN (MongoDB, Express.js, React, Node.js) application by leveraging the power of AWS Elastic Kubernetes Service (EKS), Jenkins, and Helm. The core objective is to ensure the application is scalable, secure, and highly available while minimizing manual intervention. Kubernetes provides robust orchestration for managing containerized applications, and Helm simplifies the deployment process by managing Kubernetes manifests. 
 
----
+The integration of Jenkins introduces automation into the entire infrastructure provisioning and deployment lifecycle, ensuring that continuous integration and continuous deployment (CI/CD) best practices are adhered to. By automating infrastructure provisioning, deployment, and scaling, this project reduces the likelihood of human error, enhances operational efficiency, and ensures the infrastructure is resilient and adaptable to changes in application load.
 
-## **Project Overview**  
-
-1. **EKS Cluster**: Creates an Amazon EKS Cluster with worker nodes.  
-2. **NGINX Ingress Controller**: Deploys NGINX for load balancing and routing traffic.  
-3. **Horizontal Pod Autoscaling (HPA)**: Ensures scalability based on traffic and resource usage.  
-4. **Jenkins CI/CD**: Automates the build, test, and deployment workflows for Kubernetes resources.  
-5. **AWS ALB and Cloudflare Integration**: Routes requests to the app through ALB and custom domain (`devopshunter.com`).  
-
----
-
-## **Prerequisites**  
-
-Ensure you have the following installed and configured:  
-- **AWS CLI**  
-- **kubectl**  
-- **eksctl**  
-- **helm**  
-- **Jenkins** (installed on a server or locally, with necessary plugins like **Kubernetes**, **Git**, **Pipeline**).  
-- A registered domain (`devopshunter.com`) configured on Cloudflare.  
+## Project Structure
+The project is divided into several components, each fulfilling a critical role in deploying the MERN stack application on EKS:
+1. **Jenkins Pipeline** - Automates the provisioning of IAM roles, EKS cluster creation, and application deployment. This ensures reproducibility and eliminates inconsistencies across environments.
+2. **Helm Chart** - Facilitates the deployment and management of Kubernetes resources (Deployments, Services, Ingress) through templating and version control. Helm charts standardize application deployment, providing an abstraction that simplifies Kubernetes configuration.
+3. **Kubernetes Manifests** - Define the desired state of application components, such as Deployments, Services, and Ingress controllers, allowing for fine-grained control over application behavior and resource allocation.
 
 ---
 
-## **Setup Instructions**  
+## Prerequisites
+To ensure seamless deployment, the following tools and configurations must be installed and properly configured:
+- **AWS CLI** - Enables interaction with AWS services.
+- **eksctl** - Simplifies the creation and management of EKS clusters.
+- **kubectl** - Command-line interface for managing Kubernetes clusters and resources.
+- **Jenkins** - Orchestrates the deployment pipeline, ensuring automation and repeatability.
+- **Helm** - Facilitates Kubernetes package management.
+- **Docker** - Builds and pushes container images to a container registry.
 
-### 1. **Provision EKS Cluster**  
-Run the following bash script to create the EKS cluster:  
-```bash
-#!/bin/bash
-
-# Variables
-CLUSTER_NAME="mern-cluster02"
-REGION="us-west-2"
-NODE_GROUP_NAME="standard-workers"
-NODE_TYPE="t2.medium"
-NODES=3
-
-echo "Creating EKS Cluster..."
-eksctl create cluster \
-  --name $CLUSTER_NAME \
-  --region $REGION \
-  --nodegroup-name $NODE_GROUP_NAME \
-  --node-type $NODE_TYPE \
-  --nodes $NODES \
-  --version 1.31
-
-echo "EKS Cluster setup completed."
-```  
+Additionally, ensure that the AWS Identity and Access Management (IAM) roles are correctly configured to grant Jenkins access to AWS services, including EKS and EC2.
 
 ---
 
-### 2. **Deploy NGINX Ingress Controller**  
-Once the EKS cluster is ready, deploy the **NGINX Ingress Controller**:  
-```bash
-#!/bin/bash
-
-# Install NGINX Ingress Controller
-echo "Installing NGINX Ingress Controller..."
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-helm install nginx-ingress ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace
-echo "NGINX Ingress Controller installed successfully."
-```  
-
----
-
-### 3. **Jenkins Setup**  
-
-#### 3.1 Install Jenkins Plugins  
-Ensure the following plugins are installed on Jenkins:  
-- **Kubernetes**  
-- **Git**  
-- **Pipeline**  
-- **Blue Ocean** (optional for modern UI)  
-
-#### 3.2 Configure Jenkins Kubernetes Plugin  
-1. Navigate to **Manage Jenkins** → **Manage Plugins** and install the **Kubernetes** plugin.  
-2. Go to **Manage Jenkins** → **Configure Clouds** and add a new Kubernetes cloud configuration:  
-   - Kubernetes URL: `https://<eks-cluster-endpoint>`  
-   - Kubernetes Namespace: `default`  
-   - Add Jenkins credentials for accessing the Kubernetes cluster.  
-
-#### 3.3 Jenkinsfile (Pipeline Configuration)  
-Create a `Jenkinsfile` in your GitHub repository to automate deployment and scaling:  
+## Jenkins Pipeline Setup
+### Jenkinsfile
+The Jenkins pipeline is structured to automate the following tasks:
+1. **Provision IAM Roles** - Creates the IAM roles required for EKS cluster creation and worker node provisioning. These roles grant Kubernetes and EC2 instances the necessary permissions to interact with AWS services.
+2. **Create EKS Cluster** - Provisions the EKS cluster using eksctl, streamlining the process of defining node groups, security groups, and scaling policies.
+3. **Deploy Ingress Controller** - Deploys the NGINX Ingress controller to manage external access to the services running inside the Kubernetes cluster.
+4. **Deploy Application** - Leverages Kubernetes manifests and Helm charts to deploy frontend and backend services, as well as manage the lifecycle of pods and services.
 
 ```groovy
 pipeline {
     agent any
     environment {
-        KUBE_CONFIG = credentials('kubeconfig') // Jenkins credential ID for kubeconfig
+        AWS_REGION = 'us-west-2'
+        CLUSTER_NAME = 'my-cluster01'
     }
+
     stages {
-        stage('Checkout Code') {
+        stage('Provision IAM Roles') {
             steps {
-                git branch: 'main', url: 'https://github.com/devopshunter/eks-nginx-hpa.git'
-            }
-        }
-        stage('Build Image') {
-            steps {
-                sh 'docker build -t devopshunter/example-app:latest .'
-            }
-        }
-        stage('Push Image to ECR') {
-            steps {
-                withAWS(region: 'us-west-2', credentials: 'aws-credentials') { // Replace with your AWS credentials ID
-                    sh 'aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin <ecr-repo-uri>'
-                    sh 'docker tag devopshunter/example-app:latest <ecr-repo-uri>/example-app:latest'
-                    sh 'docker push <ecr-repo-uri>/example-app:latest'
+                script {
+                    sh '''
+                    aws iam create-role --role-name eks-cluster-role01 --assume-role-policy-document file://eks-cluster-trust-policy.json
+                    aws iam attach-role-policy --role-name eks-cluster-role01 --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+                    '''
                 }
             }
         }
-        stage('Deploy to Kubernetes') {
+        
+        stage('Create EKS Cluster') {
             steps {
-                sh '''
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
-                kubectl apply -f k8s/ingress.yaml
-                '''
+                script {
+                    sh 'eksctl create cluster -f cluster-config.yaml'
+                }
             }
         }
-        stage('Verify Deployment') {
+        
+        stage('Deploy Ingress Controller') {
             steps {
-                sh 'kubectl get pods -n default'
-                sh 'kubectl get hpa'
+                script {
+                    sh 'kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/aws/deploy.yaml'
+                }
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                script {
+                    sh 'kubectl apply -f mongo-secret.yaml && kubectl apply -f backend-deployment.yaml && kubectl apply -f frontend-deployment.yaml'
+                }
             }
         }
     }
 }
-```  
+```
 
 ---
 
-### 4. **Integrate ALB and Cloudflare**  
-- Install and configure the AWS Load Balancer Controller on EKS.  
-- Update Cloudflare DNS settings to point your domain to the ALB DNS name.  
+## Helm Chart
+Helm charts are used to manage Kubernetes resources by providing a reusable and configurable deployment template. This project uses a Helm chart to deploy the frontend and backend services, ensuring that Kubernetes objects are consistently applied across environments.
+
+### Chart Structure
+```
+helm-chart/
+|-- Chart.yaml
+|-- values.yaml
+|-- templates/
+    |-- deployment.yaml
+    |-- service.yaml
+    |-- ingress.yaml
+```
+
+### Deployment YAML (Backend & Frontend)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: your-dockerhub-repo/mern-app:latest
+          ports:
+            - containerPort: 5000
+```
 
 ---
 
-## **Steps to Deploy**  
+## Application Deployment
+The application deployment follows a step-by-step approach:
 
-1. Clone this repository:
-    ```bash
-    git clone https://github.com/devopshunter/eks-nginx-hpa.git
-    cd eks-nginx-hpa
-    ```  
-
-2. Run the setup script:
-    ```bash
-    bash setup.sh
-    ```  
-
-3. Trigger the Jenkins pipeline by pushing code to GitHub or running the pipeline manually.  
-
----
-
-## **Testing Scenarios and Expected Results**  
-
-1. **Jenkins Pipeline Execution**  
-   - The pipeline builds and deploys the app to Kubernetes.  
-   - Jenkins provides a detailed log for each stage.  
-
-2. **Horizontal Pod Autoscaling Test**  
-   - Generate traffic to test HPA functionality:
-     ```bash
-     kubectl run -i --tty load-generator --image=busybox /bin/sh
-     while true; do wget -q -O- http://<service-name> ; done
-     ```  
-   - Check pods scaling:
-     ```bash
-     kubectl get hpa
-     kubectl get pods
-     ```  
-
-3. **Application Accessibility**  
-   - Access the app via `http://devopshunter.com`.  
-   - Ensure traffic is routed correctly through ALB and Cloudflare.  
-
----
-
-## **Screenshots**  
-
-1. **Jenkins Pipeline Execution**:  
-   ![Jenkins Pipeline](./screenshots/jenkins-pipeline.png)  
-
-2. **HPA Scaling Metrics**:  
-   ![HPA Metrics](./screenshots/hpa-metrics.png)  
-
-3. **Cloudflare DNS Setup**:  
-   ![Cloudflare DNS](./screenshots/cloudflare-dns.png)  
-
----
-
-## **Clean-Up Instructions**  
-
-Run the cleanup script to delete all resources:  
+1. **Namespace Creation**
+Namespaces segregate and isolate resources within a Kubernetes cluster, ensuring better resource management and avoiding conflicts.
 ```bash
-bash cleanup.sh
-```  
-
-Cleanup Script:  
+kubectl create namespace mern
+```
+2. **Deploy Secrets**
+Kubernetes secrets store sensitive information, such as database credentials, ensuring secure configuration.
 ```bash
-#!/bin/bash
+kubectl apply -f mongo-secret.yaml
+```
+3. **Deploy Backend and Frontend**
+Deploy the core application services, ensuring they are distributed across the cluster for resilience.
+```bash
+kubectl apply -f backend-deployment.yaml
+kubectl apply -f frontend-deployment.yaml
+```
+4. **Verify Deployments**
+Confirm the successful deployment by querying running pods.
+```bash
+kubectl get pods -n mern
+```
 
-# Variables
-CLUSTER_NAME="mern-cluster02"
-REGION="us-west-2"
+---
 
-# Delete NGINX Ingress Controller
-echo "Deleting NGINX Ingress Controller..."
-helm uninstall nginx-ingress --namespace ingress-nginx
-
-# Delete the EKS Cluster
-echo "Deleting EKS Cluster..."
-eksctl delete cluster --name $CLUSTER_NAME --region $REGION
-
-echo "Cleanup completed."
-```  
-
+## Conclusion
+This project represents a comprehensive approach to automating the deployment of a scalable MERN stack on AWS EKS. By leveraging Jenkins for CI/CD, Kubernetes for orchestration, and Helm for resource management, the project establishes a production-ready infrastructure capable of scaling dynamically with application demand.
 
